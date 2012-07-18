@@ -1,0 +1,18 @@
+%%-*- mode: erlang -*-
+{application, erldslabb,
+ [
+  {description, "erldslabb"},
+  {vsn, "1"},
+  {modules, []},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  inets,
+                  crypto,
+                  mochiweb,
+                  webmachine
+                 ]},
+  {mod, { erldslabb_app, []}},
+  {env, []}
+ ]}.
