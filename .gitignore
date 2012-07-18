@@ -1,6 +1,6 @@
 .eunit
 deps
-priv
+priv/log
 *.o
 *.beam
 *.plt
