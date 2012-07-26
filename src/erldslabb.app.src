@@ -10,9 +10,13 @@
                   stdlib,
                   inets,
                   crypto,
+                  public_key,
+                  ssl,
+                  epgsql,
                   mochiweb,
                   webmachine
                  ]},
+%  {included_applications, [pooler]},
   {mod, { erldslabb_app, []}},
   {env, []}
  ]}.

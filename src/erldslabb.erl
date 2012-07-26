@@ -20,8 +20,11 @@ ensure_started(App) ->
 start_link() ->
     ensure_started(inets),
     ensure_started(crypto),
+    ensure_started(public_key),
+    ensure_started(ssl),
+    ensure_started(epgsql),
     ensure_started(mochiweb),
-    application:set_env(webmachine, webmachine_logger_module, 
+    application:set_env(webmachine, webmachine_logger_module,
                         webmachine_logger),
     ensure_started(webmachine),
     erldslabb_sup:start_link().
@@ -31,8 +34,11 @@ start_link() ->
 start() ->
     ensure_started(inets),
     ensure_started(crypto),
+    ensure_started(public_key),
+    ensure_started(ssl),
+    ensure_started(epgsql),
     ensure_started(mochiweb),
-    application:set_env(webmachine, webmachine_logger_module, 
+    application:set_env(webmachine, webmachine_logger_module,
                         webmachine_logger),
     ensure_started(webmachine),
     application:start(erldslabb).
@@ -43,6 +49,9 @@ stop() ->
     Res = application:stop(erldslabb),
     application:stop(webmachine),
     application:stop(mochiweb),
+    application:stop(epgsql),
+    application:stop(ssl),
+    application:stop(public_key),
     application:stop(crypto),
     application:stop(inets),
     Res.
