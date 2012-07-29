@@ -6,3 +6,4 @@ priv/log
 *.plt
 ebin/
 erl_crash.dump
+.~/

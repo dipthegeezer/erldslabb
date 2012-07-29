@@ -7,7 +7,7 @@ setup() ->
                ), Pid.
 
 cleanup(Pid) ->
-    gen_server:call(Pid, stop).
+    gen_server:cast(Pid,stop).
 
 query_test_() ->
     {foreach,
