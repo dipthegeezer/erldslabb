@@ -1,8 +1,21 @@
-%% @author Dipesh Patel <dipthegeezer.opensource@gmail.com>
-%% @copyright 2012 author.
-%% @doc Resource for User
+%% @copyright 2012 Dipesh Patel
+%% @author Dipesh Patel<dipthegeezer.opensource@gmail.com>
+%% @end
+
+%% @doc Resource for creating editing a user
+%% GET ==
+%% - get user
+%% HEAD ==
+%% - get user
+%% POST ==
+%% - create user
+%% PUT ==
+%% - update user
+%% DELETE ==
+%% - delete user
 
 -module(erldslabb_user_resource).
+
 -export([
          init/1,
          content_types_accepted/2,
