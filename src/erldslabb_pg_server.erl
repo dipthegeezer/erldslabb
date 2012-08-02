@@ -66,31 +66,33 @@ handle_call({add_user, Params}, _From, #state{conn=Conn}=State) ->
     Username = proplists:get_value(<<"username">>, Params),
     Email = proplists:get_value(<<"email">>, Params),
     Salt = list_to_binary(
-             integer_to_list(
-               erldslabb_util:get_timestamp()
-              )
-            ),
+        integer_to_list(erldslabb_util:get_timestamp())
+    ),
     Password = erldslabb_util:hash_password(
-                 Salt,
-                 proplists:get_value(<<"password">>, Params)
-                ),
+        Salt,
+        proplists:get_value(<<"password">>, Params)
+    ),
     DOB = proplists:get_value(<<"date_of_birth">>, Params),
     %% for now bounce errors up
-    {reply,
-     pgsql:equery(
-       Conn,
-       "INSERT INTO users "
-       ++"(email, username, password, salt, date_of_birth)"
-       ++ "VALUES($1, $2, $3, $4, $5)",
-       [Email,Username,Password,Salt,DOB]
-      ),
-     State};
+    case pgsql:equery(
+           Conn,
+           "INSERT INTO users "
+           ++"(email, username, password, salt, date_of_birth)"
+           ++ "VALUES($1, $2, $3, $4, $5) RETURNING *",
+           [Email,Username,Password,Salt,DOB]
+          ) of
+        {ok, 1,Cols, Rows} ->
+            {reply, {ok, map_to_list(Cols, Rows)}, State};
+        {error, Error} -> {reply, {error, Error}, State}
+    end;
 handle_call({squery, Sql}, _From, #state{conn=Conn}=State) ->
     {reply, pgsql:squery(Conn, Sql), State};
 handle_call({get_user, Id}, _From, #state{conn=Conn}=State) ->
-    {reply,
-     pgsql:equery(Conn, "SELECT * FROM users where username=$1",[Id]),
-     State};
+    case pgsql:equery(Conn, "SELECT * FROM users where id=$1",[Id]) of
+        {ok, Cols, Rows} ->
+            {reply, {ok, map_to_list(Cols, Rows)}, State};
+        {error, Error} -> {reply, {error, Error}, State}
+    end;
 handle_call(stop, _From, State) ->
     {stop, normal, shutdown_ok, State};
 handle_call(_Request, _From, State) ->
