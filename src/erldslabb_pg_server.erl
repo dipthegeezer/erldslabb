@@ -100,6 +100,13 @@ handle_call({delete_user, Id}, _From, #state{conn=Conn}=State) ->
             {reply, {ok, Count}, State};
         {error, Error} -> {reply, {error, Error}, State}
     end;
+handle_call({update_user, Id, Params}, _From, #state{conn=Conn}=State) ->
+    {Sql,Args} = build_update_query(Id, Params),
+    case pgsql:equery(Conn, Sql, Args) of
+        {ok, 1,Cols, Rows} ->
+            {reply, {ok, map_to_list(Cols, Rows)}, State};
+        {error, Error} -> {reply, {error, Error}, State}
+    end;
 handle_call(stop, _From, State) ->
     {stop, normal, shutdown_ok, State};
 handle_call(_Request, _From, State) ->
@@ -161,6 +168,25 @@ map_to_list(Col,Rows)->
       fun (Row) -> format_column_row_result(Col,Row) end,
       Rows).
 
+build_update_query(Id,Params) ->
+    Keys = proplists:get_keys(Params),
+    Values = [proplists:get_value(K, Params) || K <- Keys],
+    {Updates,Count} = build_set_clause(Keys,1,[]),
+    { "UPDATE users SET "++ string:join(Updates, ", ")++ " WHERE id = \$"++integer_to_list(Count)
+      ++ " RETURNING *",
+      lists:append(Values,[Id])
+    }.
+
+build_set_clause([],Count,Updates)->
+    {lists:reverse(Updates),Count};
+build_set_clause([H|T],Count,Updates) ->
+    build_set_clause(T,Count+1,[format_field(H) ++ " = \$" ++ integer_to_list(Count)|Updates]).
+
+format_field(Field) when is_binary(Field) ->
+    binary_to_list(Field);
+format_field(Field) ->
+    Field.
+
 %%
 %% Tests for Internal functions
 %%
@@ -211,5 +237,12 @@ map_to_list_test() ->
         _Two
        ],
        Result).
+
+build_update_query_test() ->
+    Q = build_update_query( 12,
+                            [{<<"email">>,<<"arse@hole.com">>},
+                             {<<"username">>,<<"chimp">>}]),
+    ?assertMatch({"UPDATE users SET username = $1, email = $2 WHERE id = $3 RETURNING *",
+                  [<<"chimp">>,<<"arse@hole.com">>,12]},Q).
 
 -endif.

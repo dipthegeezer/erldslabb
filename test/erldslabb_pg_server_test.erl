@@ -74,3 +74,24 @@ delete_user_test_() ->
          Return = gen_server:call(Pid,{delete_user,Id}),
          ?_assertMatch({ok,1}, Return)
      end}.
+
+update_user_test_() ->
+    {setup,
+     fun setup/0,
+     fun cleanup/1,
+     fun(Pid) ->
+         Params = [{<<"username">>,<<"chimp">>},
+                   {<<"email">>,<<"arse@hole.com">>},
+                   {<<"password">>,<<"finger">>},
+                   {<<"date_of_birth">>,{1978,12,21}}],
+         {ok,Ret} = gen_server:call(Pid,{add_user,Params}),
+         Result = lists:nth(1, Ret),
+         Id = proplists:get_value(<<"id">>, Result),
+         Args = [{<<"username">>,<<"babbon">>},
+                 {<<"email">>,<<"pen@is.com">>}],
+         Return = gen_server:call(Pid,{update_user,Id,Args}),
+         ?_assertMatch({ok,[[{<<"id">>,_Id},
+                             {<<"email">>,<<"pen@is.com">>},
+                             {<<"username">>,<<"babbon">>},
+                             _, _, _]]}, Return)
+     end}.
