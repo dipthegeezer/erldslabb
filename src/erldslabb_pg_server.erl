@@ -62,16 +62,12 @@ init([Hostname,Port,Database,Username,Password]) ->
 %%          {stop, Reason, Reply, State} | (terminate/2 is called)
 %%          {stop, Reason, State} (terminate/2 is called)
 %%----------------------------------------------------------------------
-handle_call({add_user, Params}, _From, #state{conn=Conn}=State) ->
+handle_call({add_user, Args}, _From, #state{conn=Conn}=State) ->
+    Params = password_and_salt(Args),
     Username = proplists:get_value(<<"username">>, Params),
     Email = proplists:get_value(<<"email">>, Params),
-    Salt = list_to_binary(
-        integer_to_list(erldslabb_util:get_timestamp())
-    ),
-    Password = erldslabb_util:hash_password(
-        Salt,
-        proplists:get_value(<<"password">>, Params)
-    ),
+    Salt = proplists:get_value(<<"salt">>, Params),
+    Password = proplists:get_value(<<"password">>, Params),
     DOB = proplists:get_value(<<"date_of_birth">>, Params),
     %% for now bounce errors up
     case pgsql:equery(
@@ -101,7 +97,7 @@ handle_call({delete_user, Id}, _From, #state{conn=Conn}=State) ->
         {error, Error} -> {reply, {error, Error}, State}
     end;
 handle_call({update_user, Id, Params}, _From, #state{conn=Conn}=State) ->
-    {Sql,Args} = build_update_query(Id, Params),
+    {Sql,Args} = build_update_query(Id, password_and_salt(Params)),
     case pgsql:equery(Conn, Sql, Args) of
         {ok, 1,Cols, Rows} ->
             {reply, {ok, map_to_list(Cols, Rows)}, State};
@@ -168,24 +164,51 @@ map_to_list(Col,Rows)->
       fun (Row) -> format_column_row_result(Col,Row) end,
       Rows).
 
+%% @spec (integer(), iolist()) -> { iolist(), iolist }
+%% @doc Creates the update query for the given list of
+%% parameters and Id
 build_update_query(Id,Params) ->
     Keys = proplists:get_keys(Params),
     Values = [proplists:get_value(K, Params) || K <- Keys],
     {Updates,Count} = build_set_clause(Keys,1,[]),
-    { "UPDATE users SET "++ string:join(Updates, ", ")++ " WHERE id = \$"++integer_to_list(Count)
+    { "UPDATE users SET "++ string:join(Updates, ", ")
+      ++ " WHERE id = \$"++integer_to_list(Count)
       ++ " RETURNING *",
       lists:append(Values,[Id])
     }.
 
+%% @spec (iolist(), integer(), iolist()) -> { iolist(), integer }
+%% @doc Creates the necessary parameters to the SET sql query
 build_set_clause([],Count,Updates)->
     {lists:reverse(Updates),Count};
 build_set_clause([H|T],Count,Updates) ->
-    build_set_clause(T,Count+1,[format_field(H) ++ " = \$" ++ integer_to_list(Count)|Updates]).
+    build_set_clause(T,Count+1,[format_field(H) ++ " = \$"
+                                ++ integer_to_list(Count)|Updates]).
 
+%% @spec (term()) -> { iolist() }
+%% @doc Converts binary to string else does nothing.
 format_field(Field) when is_binary(Field) ->
     binary_to_list(Field);
 format_field(Field) ->
     Field.
+
+%% @spec (iolist()) -> { iolist() }
+%% @doc Adds a hashed password and its salt to the returning
+%% list removing the text password in the list.
+password_and_salt(Params) ->
+    case proplists:is_defined(<<"password">>, Params) of
+        false -> Params;
+        true ->  Salt = list_to_binary(
+                     integer_to_list(erldslabb_util:get_timestamp())
+                 ),
+                 Password = erldslabb_util:hash_password(
+                     Salt,
+                     proplists:get_value(<<"password">>, Params)
+                 ),
+                 lists:append(
+                   proplists:delete(<<"password">>,Params),
+                   [{<<"salt">>,Salt},{<<"password">>,Password}])
+    end.
 
 %%
 %% Tests for Internal functions
@@ -244,5 +267,17 @@ build_update_query_test() ->
                              {<<"username">>,<<"chimp">>}]),
     ?assertMatch({"UPDATE users SET username = $1, email = $2 WHERE id = $3 RETURNING *",
                   [<<"chimp">>,<<"arse@hole.com">>,12]},Q).
+
+password_and_salt_test() ->
+    List = password_and_salt(
+        [{<<"email">>,<<"arse@hole.com">>},
+         {<<"username">>,<<"chimp">>},
+         {<<"password">>,<<"didio">>},
+         {<<"date_of_birth">>,{1978,12,21}}]),
+    ?assertMatch([{<<"email">>,<<"arse@hole.com">>},
+                  {<<"username">>,<<"chimp">>},
+                  {<<"date_of_birth">>,{1978,12,21}},
+                  {<<"salt">>,_},
+                  {<<"password">>,_}],List).
 
 -endif.
