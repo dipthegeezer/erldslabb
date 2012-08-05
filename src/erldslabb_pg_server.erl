@@ -93,6 +93,13 @@ handle_call({get_user, Id}, _From, #state{conn=Conn}=State) ->
             {reply, {ok, map_to_list(Cols, Rows)}, State};
         {error, Error} -> {reply, {error, Error}, State}
     end;
+handle_call({delete_user, Id}, _From, #state{conn=Conn}=State) ->
+    % delete for now may switch to flag later.
+    case pgsql:equery(Conn, "DELETE FROM users where id=$1",[Id]) of
+        {ok, Count} ->
+            {reply, {ok, Count}, State};
+        {error, Error} -> {reply, {error, Error}, State}
+    end;
 handle_call(stop, _From, State) ->
     {stop, normal, shutdown_ok, State};
 handle_call(_Request, _From, State) ->
