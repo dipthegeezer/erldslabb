@@ -29,9 +29,12 @@
          to_json/2,
          from_json/2
         ]).
+
 -include_lib("webmachine/include/webmachine.hrl").
 
-init([]) -> {ok, undefined}.
+-record(ctx, {user}).
+
+init([]) -> {ok, #ctx{}}.
 
 content_types_provided(ReqData, Context) ->
     {[{"application/json", to_json}], ReqData, Context}.
@@ -64,14 +67,17 @@ delete_resource(ReqData, Context) ->
     %end.
 
 resource_exists(ReqData, Context) ->
-    Id = wrq:path_info(id, ReqData),
-    io:fwrite("Exists ~p ~n",[Id]),
-    {true, ReqData, Context}.
+    Id = list_to_integer(wrq:path_info(id, ReqData)),
+    Worker = poolboy:checkout(bruce),
+    Status = case gen_server:call(Worker, {get_user,Id}) of
+                 {ok,[H|_]} -> {true, ReqData, Context#ctx{user=H}};
+                 {ok,[]} -> {false, ReqData, Context}
+             end,
+    poolboy:checkin(bruce, Worker),
+    Status.
 
-to_json(ReqData, Context) ->
-    Id = wrq:path_info(id, ReqData),
-    % to fill in get etc.
-    Resp = "{id:" ++ Id ++ "}",
+to_json(ReqData, Context=#ctx{user=User}) ->
+    Resp = iolist_to_binary(mochijson2:encode({struct,User})),
     {Resp, ReqData, Context}.
 
 from_json(ReqData, Context) ->

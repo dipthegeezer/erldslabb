@@ -2,7 +2,7 @@
 {application, erldslabb,
  [
   {description, "erldslabb"},
-  {vsn, "1"},
+  {vsn, "0.1"},
   {modules, []},
   {registered, []},
   {applications, [
@@ -12,11 +12,10 @@
                   crypto,
                   public_key,
                   ssl,
-                  epgsql,
                   mochiweb,
                   webmachine
                  ]},
-%  {included_applications, [pooler]},
+  {included_applications, [poolboy,epgsql]},
   {mod, { erldslabb_app, []}},
   {env, []}
  ]}.

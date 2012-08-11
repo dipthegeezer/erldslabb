@@ -4,7 +4,6 @@
 
 -module(erldslabb_pg_server).
 -behaviour(gen_server).
--define(SERVER, ?MODULE).
 
 %% ------------------------------------------------------------------
 %% API Function Exports
@@ -30,7 +29,7 @@
 %% ------------------------------------------------------------------
 
 start_link(Args) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
+    gen_server:start_link(?MODULE, Args, []).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -74,7 +73,7 @@ handle_call({add_user, Args}, _From, #state{conn=Conn}=State) ->
            Conn,
            "INSERT INTO users "
            ++"(email, username, password, salt, date_of_birth)"
-           ++ "VALUES($1, $2, $3, $4, $5) RETURNING *",
+           ++ "VALUES($1, $2, $3, $4, $5) RETURNING id,email,username,date_of_birth",
            [Email,Username,Password,Salt,DOB]
           ) of
         {ok, 1,Cols, Rows} ->
@@ -84,7 +83,7 @@ handle_call({add_user, Args}, _From, #state{conn=Conn}=State) ->
 handle_call({squery, Sql}, _From, #state{conn=Conn}=State) ->
     {reply, pgsql:squery(Conn, Sql), State};
 handle_call({get_user, Id}, _From, #state{conn=Conn}=State) ->
-    case pgsql:equery(Conn, "SELECT * FROM users where id=$1",[Id]) of
+    case pgsql:equery(Conn, "SELECT id,email,username,date_of_birth FROM users where id=$1",[Id]) of
         {ok, Cols, Rows} ->
             {reply, {ok, map_to_list(Cols, Rows)}, State};
         {error, Error} -> {reply, {error, Error}, State}
@@ -173,7 +172,7 @@ build_update_query(Id,Params) ->
     {Updates,Count} = build_set_clause(Keys,1,[]),
     { "UPDATE users SET "++ string:join(Updates, ", ")
       ++ " WHERE id = \$"++integer_to_list(Count)
-      ++ " RETURNING *",
+      ++ " RETURNING id,email,username,date_of_birth",
       lists:append(Values,[Id])
     }.
 

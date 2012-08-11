@@ -53,5 +53,14 @@ init([]) ->
     Web = {webmachine_mochiweb,
            {webmachine_mochiweb, start, [WebConfig]},
            permanent, 5000, worker, [mochiweb_socket_server]},
-    Processes = [Web],
+    {ok, Pools} = application:get_env(erldslabb, pools),
+    PoolSpecs = lists:map(
+       fun(Pool) ->
+           PoolArgs = proplists:get_value(poolargs,Pool),
+           {_, Name} = proplists:get_value(name,PoolArgs),
+           WorkerArgs = proplists:get_value(workerargs,Pool),
+           poolboy:child_spec(Name, PoolArgs, WorkerArgs)
+       end, Pools),
+    io:fwrite(standard_error,"SPECS ~p~n",[PoolSpecs]),
+    Processes = [Web]++PoolSpecs,
     {ok, { {one_for_one, 10, 10}, Processes} }.

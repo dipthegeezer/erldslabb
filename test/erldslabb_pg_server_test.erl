@@ -25,8 +25,6 @@ add_user_test_() ->
          ?_assertMatch({ok,[[{<<"id">>,_Id},
                              {<<"email">>,<<"arse@hole.com">>},
                              {<<"username">>,<<"chimp">>},
-                             {<<"password">>,_P},
-                             {<<"salt">>,_S},
                              {<<"date_of_birth">>,{1978,12,21}}]]},
                        Return)
      end}.
@@ -43,16 +41,12 @@ get_user_test_() ->
          {ok,Ret} = gen_server:call(Pid,{add_user,Params}),
          Result = lists:nth(1, Ret),
          Id = proplists:get_value(<<"id">>, Result),
-         P = proplists:get_value(<<"password">>, Result),
-         S = proplists:get_value(<<"salt">>, Result),
          Return = gen_server:call(Pid,{get_user,Id}),
          ?_assertMatch(
             {ok,[
                  [{<<"id">>,Id},
                   {<<"email">>,<<"arse@hole.com">>},
                   {<<"username">>,<<"chimp">>},
-                  {<<"password">>,P},
-                  {<<"salt">>,S},
                   {<<"date_of_birth">>,{1978,12,21}}]
                 ]
             },
@@ -90,8 +84,8 @@ update_user_test_() ->
          Args = [{<<"username">>,<<"babbon">>},
                  {<<"email">>,<<"pen@is.com">>}],
          Return = gen_server:call(Pid,{update_user,Id,Args}),
-         ?_assertMatch({ok,[[{<<"id">>,_Id},
+         ?_assertMatch({ok,[[{<<"id">>,Id},
                              {<<"email">>,<<"pen@is.com">>},
                              {<<"username">>,<<"babbon">>},
-                             _, _, _]]}, Return)
+                             _]]}, Return)
      end}.
