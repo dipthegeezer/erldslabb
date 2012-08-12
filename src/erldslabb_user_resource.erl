@@ -54,8 +54,22 @@ allow_missing_post(ReqData, Context) ->
 process_post(ReqData, Context) ->
     [{JsonDoc, _}] = mochiweb_util:parse_qs(wrq:req_body(ReqData)),
     {struct, Doc} = mochijson2:decode(JsonDoc),
-    io:fwrite("Args ~p post ~n",[Doc]),
-    {true, ReqData, Context}.
+    FDate = erldslabb_util:json_date_format_for_epgsql(
+      proplists:get_value(<<"date_of_birth">>, Doc)
+    ),
+    Doc2 = proplists:delete(<<"date_of_birth">>, Doc)
+        ++[{<<"date_of_birth">>,FDate}],
+    Worker = poolboy:checkout(bruce),
+    case gen_server:call(Worker, {add_user,Doc2}) of
+        {ok,[H|_]} ->
+            poolboy:checkin(bruce, Worker),
+            {Resp, ReqData, Ctx} = to_json(ReqData,#ctx{user=H}),
+            {true, wrq:set_resp_body(Resp, ReqData), Ctx};
+        {error,Error} ->
+            poolboy:checkin(bruce, Worker),
+            io:fwrite("Error ~p~n",[Error]),
+            {false, ReqData, Context}
+    end.
 
 delete_resource(ReqData, Context=#ctx{user=User}) ->
     Id = proplists:get_value(<<"id">>, User),
@@ -69,14 +83,19 @@ delete_resource(ReqData, Context=#ctx{user=User}) ->
     Status.
 
 resource_exists(ReqData, Context) ->
-    Id = list_to_integer(wrq:path_info(id, ReqData)),
-    Worker = poolboy:checkout(bruce),
-    Status = case gen_server:call(Worker, {get_user,Id}) of
-                 {ok,[H|_]} -> {true, ReqData, Context#ctx{user=H}};
-                 {ok,[]} -> {false, ReqData, Context}
-             end,
-    poolboy:checkin(bruce, Worker),
-    Status.
+    case wrq:method(ReqData) of
+        'POST' -> {true, ReqData, Context};
+        _ -> Id = list_to_integer(wrq:path_info(id, ReqData)),
+             Worker = poolboy:checkout(bruce),
+             Status = case gen_server:call(Worker, {get_user,Id}) of
+                          {ok,[H|_]} ->
+                              {true, ReqData, Context#ctx{user=H}};
+                          {ok,[]} ->
+                              {false, ReqData, Context}
+                      end,
+             poolboy:checkin(bruce, Worker),
+             Status
+    end.
 
 to_json(ReqData, Context=#ctx{user=User}) ->
     FDate = erldslabb_util:epgsql_date_format_for_json(
