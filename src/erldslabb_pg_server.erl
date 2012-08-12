@@ -43,6 +43,7 @@ start_link(Args) ->
 %%          {stop, Reason}
 %%----------------------------------------------------------------------
 init([Hostname,Port,Database,Username,Password]) ->
+    process_flag(trap_exit, true),
     {ok, Conn} = pgsql:connect(
                    Hostname,
                    Username,
@@ -122,6 +123,11 @@ handle_cast(_Msg, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State} (terminate/2 is called)
 %%----------------------------------------------------------------------
+% not too sure if best way of handling it but for now
+handle_info({'EXIT', _Pid, shutdown}, State) ->
+    {stop, normal, State};
+handle_info({'EXIT', _Pid, Reason}, State) ->
+    {stop, Reason, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -264,7 +270,7 @@ build_update_query_test() ->
     Q = build_update_query( 12,
                             [{<<"email">>,<<"arse@hole.com">>},
                              {<<"username">>,<<"chimp">>}]),
-    ?assertMatch({"UPDATE users SET username = $1, email = $2 WHERE id = $3 RETURNING *",
+    ?assertMatch({"UPDATE users SET username = $1, email = $2 WHERE id = $3 RETURNING id,email,username,date_of_birth",
                   [<<"chimp">>,<<"arse@hole.com">>,12]},Q).
 
 password_and_salt_test() ->

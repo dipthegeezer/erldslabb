@@ -29,7 +29,9 @@
 
 -export([
          get_timestamp/0,
-         hash_password/2
+         hash_password/2,
+         epgsql_date_format_for_json/1,
+         json_date_format_for_epgsql/1
         ]).
 
 %% @spec () -> integer()
@@ -45,6 +47,16 @@ hash_password(Salt, Password) ->
     Cxt2 = crypto:hmac_update(Cxt,Password),
     Mac = crypto:hmac_final(Cxt2),
     base64:encode(Mac).
+
+%% @spec (tuple()) -> iolist()
+%% @doc Simple function to format date for outputing
+epgsql_date_format_for_json({Year,Month,Day}) ->
+    [{<<"year">>,Year},{<<"month">>,Month},{<<"day">>,Day}].
+
+%% @spec (tuple()) -> tuple()
+%% @doc Simple function to format date for epgsql
+json_date_format_for_epgsql({struct,[{<<"year">>,Year},{<<"month">>,Month},{<<"day">>,Day}]}) ->
+    {Year,Month,Day}.
 
 %% @private
 %% @doc not currently used will yank at some point
@@ -100,6 +112,29 @@ hash_password_test_() ->
          HashString = erldslabb_util:hash_password("foo","bar"),
          ?assertEqual(<<"RrTsWGEXFU2s1J1mTl1j/ciO+1E=">>,
                       HashString)
+     end
+	}.
+
+epgsql_date_format_for_json_test_() ->
+    {"We get the correctly formatted date.",
+     fun() ->
+         Date = erldslabb_util:epgsql_date_format_for_json(
+                  {2012,08,12}
+                ),
+         ?assertEqual([{<<"year">>,2012},
+                       {<<"month">>,8},
+                       {<<"day">>,12}],
+                      Date)
+     end
+	}.
+
+json_date_format_for_epgsql_test_() ->
+    {"We get the correctly formatted pgsql date.",
+     fun() ->
+         Date = erldslabb_util:json_date_format_for_epgsql(
+                  {struct,[{<<"year">>,2012},{<<"month">>,8},{<<"day">>,12}]}
+                ),
+         ?assertEqual({2012,8,12},Date)
      end
 	}.
 

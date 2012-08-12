@@ -57,14 +57,16 @@ process_post(ReqData, Context) ->
     io:fwrite("Args ~p post ~n",[Doc]),
     {true, ReqData, Context}.
 
-delete_resource(ReqData, Context) ->
-    Id = wrq:path_info(id, ReqData),
-    io:fwrite("Delete ~p ~n",[Id]),
-    {true, ReqData, Context}.
-    %case prp_schema:delete_paper(Id) of
-     %   ok    -> {true, RD, Ctx};
-     %   _Else -> {false, RD, Ctx}
-    %end.
+delete_resource(ReqData, Context=#ctx{user=User}) ->
+    Id = proplists:get_value(<<"id">>, User),
+    Worker = poolboy:checkout(bruce),
+    Status = case gen_server:call(Worker, {delete_user,Id}) of
+                 {ok,1} -> {true, ReqData, #ctx{}};
+                 {error,Error} -> io:fwrite("Error ~p~n",[Error]),
+                                  {false, ReqData, Context}
+             end,
+    poolboy:checkin(bruce, Worker),
+    Status.
 
 resource_exists(ReqData, Context) ->
     Id = list_to_integer(wrq:path_info(id, ReqData)),
@@ -77,14 +79,37 @@ resource_exists(ReqData, Context) ->
     Status.
 
 to_json(ReqData, Context=#ctx{user=User}) ->
-    Resp = iolist_to_binary(mochijson2:encode({struct,User})),
+    FDate = erldslabb_util:epgsql_date_format_for_json(
+      proplists:get_value(<<"date_of_birth">>, User)
+    ),
+    Resp = iolist_to_binary(
+             mochijson2:encode(
+               {struct,
+                proplists:delete(<<"date_of_birth">>, User)
+                ++[{<<"date_of_birth">>,FDate}]
+               }
+              )
+            ),
     {Resp, ReqData, Context}.
 
 from_json(ReqData, Context) ->
-    Id = wrq:path_info(id, ReqData),
+    Id = list_to_integer(wrq:path_info(id, ReqData)),
     [{JsonDoc, _}] = mochiweb_util:parse_qs(wrq:req_body(ReqData)),
     {struct, Doc} = mochijson2:decode(JsonDoc),
-    io:fwrite("Args ~p post ~n",[Doc]),
-    Resp2 = wrq:set_resp_body("{put_id:" ++ Id ++ "}", ReqData),
-    io:fwrite("Putting ~p ~n",[Id]),
-    {true, Resp2, Context}.
+    % format date
+    FDate = erldslabb_util:json_date_format_for_epgsql(
+      proplists:get_value(<<"date_of_birth">>, Doc)
+    ),
+    Doc2 = proplists:delete(<<"date_of_birth">>, Doc)
+        ++[{<<"date_of_birth">>,FDate}],
+    Worker = poolboy:checkout(bruce),
+    case gen_server:call(Worker, {update_user,Id,Doc2}) of
+        {ok,[H|_]} ->
+            poolboy:checkin(bruce, Worker),
+            {Resp, ReqData, Ctx} = to_json(ReqData,#ctx{user=H}),
+            {true, wrq:set_resp_body(Resp, ReqData), Ctx};
+        {error,Error} ->
+            poolboy:checkin(bruce, Worker),
+            io:fwrite("Error ~p~n",[Error]),
+            {false, ReqData, Context}
+    end.
