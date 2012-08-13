@@ -59,42 +59,41 @@ process_post(ReqData, Context) ->
     ),
     Doc2 = proplists:delete(<<"date_of_birth">>, Doc)
         ++[{<<"date_of_birth">>,FDate}],
-    Worker = poolboy:checkout(bruce),
-    case gen_server:call(Worker, {add_user,Doc2}) of
+    case poolboy:transaction( bruce,
+                              fun(Worker) -> gen_server:call(Worker, {add_user,Doc2})
+                              end ) of
         {ok,[H|_]} ->
-            poolboy:checkin(bruce, Worker),
             {Resp, ReqData, Ctx} = to_json(ReqData,#ctx{user=H}),
             {true, wrq:set_resp_body(Resp, ReqData), Ctx};
         {error,Error} ->
-            poolboy:checkin(bruce, Worker),
             io:fwrite("Error ~p~n",[Error]),
             {false, ReqData, Context}
     end.
 
 delete_resource(ReqData, Context=#ctx{user=User}) ->
     Id = proplists:get_value(<<"id">>, User),
-    Worker = poolboy:checkout(bruce),
-    Status = case gen_server:call(Worker, {delete_user,Id}) of
+    case poolboy:transaction( bruce,
+                              fun(Worker) ->
+                                      gen_server:call(Worker, {delete_user,Id})
+                              end) of
                  {ok,1} -> {true, ReqData, #ctx{}};
                  {error,Error} -> io:fwrite("Error ~p~n",[Error]),
                                   {false, ReqData, Context}
-             end,
-    poolboy:checkin(bruce, Worker),
-    Status.
+             end.
 
 resource_exists(ReqData, Context) ->
     case wrq:method(ReqData) of
         'POST' -> {true, ReqData, Context};
         _ -> Id = list_to_integer(wrq:path_info(id, ReqData)),
-             Worker = poolboy:checkout(bruce),
-             Status = case gen_server:call(Worker, {get_user,Id}) of
-                          {ok,[H|_]} ->
-                              {true, ReqData, Context#ctx{user=H}};
-                          {ok,[]} ->
-                              {false, ReqData, Context}
-                      end,
-             poolboy:checkin(bruce, Worker),
-             Status
+             case poolboy:transaction(
+                    bruce, fun(Worker) ->
+                                   gen_server:call(Worker, {get_user,Id})
+                           end) of
+                 {ok,[H|_]} ->
+                     {true, ReqData, Context#ctx{user=H}};
+                 {ok,[]} ->
+                     {false, ReqData, Context}
+             end
     end.
 
 to_json(ReqData, Context=#ctx{user=User}) ->
@@ -121,14 +120,14 @@ from_json(ReqData, Context) ->
     ),
     Doc2 = proplists:delete(<<"date_of_birth">>, Doc)
         ++[{<<"date_of_birth">>,FDate}],
-    Worker = poolboy:checkout(bruce),
-    case gen_server:call(Worker, {update_user,Id,Doc2}) of
+    case poolboy:transaction(
+           bruce, fun(Worker) ->
+                      gen_server:call(Worker, {update_user,Id,Doc2})
+                  end ) of
         {ok,[H|_]} ->
-            poolboy:checkin(bruce, Worker),
             {Resp, ReqData, Ctx} = to_json(ReqData,#ctx{user=H}),
             {true, wrq:set_resp_body(Resp, ReqData), Ctx};
         {error,Error} ->
-            poolboy:checkin(bruce, Worker),
             io:fwrite("Error ~p~n",[Error]),
             {false, ReqData, Context}
     end.
