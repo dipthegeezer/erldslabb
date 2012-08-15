@@ -31,7 +31,8 @@
          get_timestamp/0,
          hash_password/2,
          epgsql_date_format_for_json/1,
-         json_date_format_for_epgsql/1
+         json_date_format_for_epgsql/1,
+         hexstring/1
         ]).
 
 %% @spec () -> integer()
@@ -58,8 +59,8 @@ epgsql_date_format_for_json({Year,Month,Day}) ->
 json_date_format_for_epgsql({struct,[{<<"year">>,Year},{<<"month">>,Month},{<<"day">>,Day}]}) ->
     {Year,Month,Day}.
 
-%% @private
-%% @doc not currently used will yank at some point
+%% @spec (binary()) -> iolist()
+%% @doc Take a binary values and convert to a hex string
 hexstring(<<X:128/big-unsigned-integer>>) ->
     lists:flatten(io_lib:format("~32.16.0b", [X]));
 hexstring(<<X:160/big-unsigned-integer>>) ->
