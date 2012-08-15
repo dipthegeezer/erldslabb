@@ -104,9 +104,7 @@ handle_call({update_user, Id, Params}, _From, #state{conn=Conn}=State) ->
         {error, Error} -> {reply, {error, Error}, State}
     end;
 handle_call(stop, _From, State) ->
-    {stop, normal, shutdown_ok, State};
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+    {stop, normal, shutdown_ok, State}.
 
 %%----------------------------------------------------------------------
 %% Func: handle_cast/2

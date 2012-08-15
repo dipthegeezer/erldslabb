@@ -15,7 +15,7 @@
                   mochiweb,
                   webmachine
                  ]},
-  {included_applications, [poolboy,epgsql]},
-  {mod, { erldslabb_app, []}},
+  {included_applications, [poolboy,epgsql,eredis]},
+  {mod, {erldslabb_app, []}},
   {env, []}
  ]}.
