@@ -59,9 +59,7 @@ process_post(ReqData, Context) ->
     ),
     Doc2 = proplists:delete(<<"date_of_birth">>, Doc)
         ++[{<<"date_of_birth">>,FDate}],
-    case poolboy:transaction( bruce,
-                              fun(Worker) -> gen_server:call(Worker, {add_user,Doc2})
-                              end ) of
+    case pg_cmd({add_user,Doc2}) of
         {ok,[H|_]} ->
             {Resp, ReqData, Ctx} = to_json(ReqData,#ctx{user=H}),
             {true, wrq:set_resp_body(Resp, ReqData), Ctx};
@@ -72,23 +70,17 @@ process_post(ReqData, Context) ->
 
 delete_resource(ReqData, Context=#ctx{user=User}) ->
     Id = proplists:get_value(<<"id">>, User),
-    case poolboy:transaction( bruce,
-                              fun(Worker) ->
-                                      gen_server:call(Worker, {delete_user,Id})
-                              end) of
-                 {ok,1} -> {true, ReqData, #ctx{}};
-                 {error,Error} -> io:fwrite("Error ~p~n",[Error]),
-                                  {false, ReqData, Context}
-             end.
+    case pg_cmd({delete_user,Id}) of
+        {ok,1} -> {true, ReqData, #ctx{}};
+        {error,Error} -> io:fwrite("Error ~p~n",[Error]),
+                         {false, ReqData, Context}
+    end.
 
 resource_exists(ReqData, Context) ->
     case wrq:method(ReqData) of
         'POST' -> {true, ReqData, Context};
         _ -> Id = list_to_integer(wrq:path_info(id, ReqData)),
-             case poolboy:transaction(
-                    bruce, fun(Worker) ->
-                                   gen_server:call(Worker, {get_user,Id})
-                           end) of
+             case pg_cmd({get_user,Id}) of
                  {ok,[H|_]} ->
                      {true, ReqData, Context#ctx{user=H}};
                  {ok,[]} ->
@@ -120,10 +112,7 @@ from_json(ReqData, Context) ->
     ),
     Doc2 = proplists:delete(<<"date_of_birth">>, Doc)
         ++[{<<"date_of_birth">>,FDate}],
-    case poolboy:transaction(
-           bruce, fun(Worker) ->
-                      gen_server:call(Worker, {update_user,Id,Doc2})
-                  end ) of
+    case pg_cmd({update_user,Id,Doc2}) of
         {ok,[H|_]} ->
             {Resp, ReqData, Ctx} = to_json(ReqData,#ctx{user=H}),
             {true, wrq:set_resp_body(Resp, ReqData), Ctx};
@@ -131,3 +120,12 @@ from_json(ReqData, Context) ->
             io:fwrite("Error ~p~n",[Error]),
             {false, ReqData, Context}
     end.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
+
+pg_cmd(Args) ->
+    poolboy:transaction( bruce, fun(Worker) ->
+                                        gen_server:call(Worker, Args)
+                                end ).

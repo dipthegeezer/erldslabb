@@ -27,6 +27,9 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+get_session_data(SessionId) ->
+    gen_server:call(?SERVER, {get_session_data,SessionId}).
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -35,33 +38,55 @@ init(Args) ->
     random:seed(now()),
     {ok, Args}.
 
-handle_call({get_session, SessionId}, _From, State) ->
-    case poolboy:transaction(
-           dick, fun(Worker) ->
-                     eredis:q(Worker,["EXISTS", SessionID])
-                 end ) of
-        {ok, <<"1">>} -> {reply, {ok, SessionID}, State};
-        {ok, <<"0">>} -> NewSessionID = get_session_id(),
-                         case poolboy:transaction(
-                                dick, fun(Worker) ->
-                                          eredis:q(Worker,["SETX", SessionID, 800, ""])
-                                 end ) of
+handle_call({find_or_create_session, SessionId}, _From, State) ->
+    case eredis_cmd(["EXISTS", SessionId]) of
+        {ok, <<"1">>} -> {reply, {ok, SessionId}, State};
+        {ok, <<"0">>} -> NewSessionId = get_session_id(),
+                         case eredis_cmd(["SETX", SessionId, 800, "{}"]) of
                              {error, Error} ->
                                  {reply, {error, Error}, State};
                              {ok,<<"OK">>} ->
-                                 {reply, {ok, NewSessionID}, State}
-                             end
+                                 {reply, {ok, NewSessionId}, State}
+                         end
     end;
 handle_call({get_session_data, SessionId}, _From, State) ->
-    {reply, ok, State};
+    case eredis_cmd(["GET", SessionId]) of
+        {ok, Data} -> {struct,DecodeData} = mochijson2:decode(Data),
+                      {reply, {ok, DecodeData}, State};
+        {error, Error} -> {reply, {error, Error}, State}
+    end;
 handle_call({get_session_data, SessionId, Key}, _From, State) ->
-    {reply, ok, State};
+    case eredis_cmd(["GET", SessionId]) of
+        {ok, Data} -> {struct,DecodeData} = mochijson2:decode(Data),
+                      Value = proplists:get_value(Key, DecodeData),
+                      {reply, {ok, Value}, State};
+        {error, Error} -> {reply, {error, Error}, State}
+    end;
 handle_call({set_session_data, SessionId, Key, Value}, _From, State) ->
-    {reply, ok, State};
-handle_call({delete_session, SessionID}, _From, State) ->
-    {reply, ok, State};
-handle_call({remove_session_data, Sessionid, Key}, _From, State) ->
-    {reply, ok, State}.
+    {ok, Data} = get_session_data(SessionId),
+    NewData = proplists:delete(Key,Data)++[{Key,Value}],
+    EncodedNewData = iolist_to_binary(mochijson2:encode({struct,NewData})),
+    case eredis_cmd(["SETX", SessionId, 800, EncodedNewData]) of
+        {error, Error} ->
+            {reply, {error, Error}, State};
+        {ok,<<"OK">>} ->
+            {reply, ok, State}
+    end;
+handle_call({delete_session, SessionId}, _From, State) ->
+    case eredis_cmd(["DEL", SessionId]) of
+        {ok, Count} -> {reply, {ok, Count}, State};
+        {error, Error} -> {reply, {error, Error}, State}
+    end;
+handle_call({remove_session_data, SessionId, Key}, _From, State) ->
+    {ok, Data} = get_session_data(SessionId),
+    NewData = proplists:delete(Key,Data),
+    EncodedNewData = iolist_to_binary(mochijson2:encode({struct,NewData})),
+    case eredis_cmd(["SETX", SessionId, 800, EncodedNewData]) of
+        {error, Error} ->
+            {reply, {error, Error}, State};
+        {ok,<<"OK">>} ->
+            {reply, ok, State}
+    end.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -79,6 +104,21 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-get_session_id()->
+get_session_id() ->
     Data = crypto:sha(crypto:strong_rand_bytes(4096)),
     erldslabb_util:hexstring(Data).
+
+eredis_cmd(Args) ->
+    poolboy:transaction( dick, fun(Worker) -> eredis:q(Worker, Args) end ).
+
+%% ------------------------------------------------------------------
+%% Internal Function Tests
+%% ------------------------------------------------------------------
+-include_lib("eunit/include/eunit.hrl").
+-ifdef(TEST).
+
+get_session_id_test() ->
+    Id = get_session_id(),
+    ?assert(string:len(Id)=:=40).
+
+-endif.
