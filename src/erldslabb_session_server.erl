@@ -27,9 +27,6 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-get_session_data(SessionId) ->
-    gen_server:call(?SERVER, {get_session_data,SessionId}).
-
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -42,7 +39,7 @@ handle_call({find_or_create_session, SessionId}, _From, State) ->
     case eredis_cmd(["EXISTS", SessionId]) of
         {ok, <<"1">>} -> {reply, {ok, SessionId}, State};
         {ok, <<"0">>} -> NewSessionId = get_session_id(),
-                         case eredis_cmd(["SETX", SessionId, 800, "{}"]) of
+                         case eredis_cmd(["SETEX", NewSessionId, 800, "{}"]) of
                              {error, Error} ->
                                  {reply, {error, Error}, State};
                              {ok,<<"OK">>} ->
@@ -50,43 +47,47 @@ handle_call({find_or_create_session, SessionId}, _From, State) ->
                          end
     end;
 handle_call({get_session_data, SessionId}, _From, State) ->
-    case eredis_cmd(["GET", SessionId]) of
-        {ok, Data} -> {struct,DecodeData} = mochijson2:decode(Data),
-                      {reply, {ok, DecodeData}, State};
+    case get_session_data(SessionId) of
+        {ok, Data} -> {reply, {ok, Data}, State};
         {error, Error} -> {reply, {error, Error}, State}
     end;
+
 handle_call({get_session_data, SessionId, Key}, _From, State) ->
-    case eredis_cmd(["GET", SessionId]) of
-        {ok, Data} -> {struct,DecodeData} = mochijson2:decode(Data),
-                      Value = proplists:get_value(Key, DecodeData),
+    case get_session_data(SessionId) of
+        {ok, Data} -> Value = proplists:get_value(Key, Data),
                       {reply, {ok, Value}, State};
         {error, Error} -> {reply, {error, Error}, State}
     end;
 handle_call({set_session_data, SessionId, Key, Value}, _From, State) ->
-    {ok, Data} = get_session_data(SessionId),
-    NewData = proplists:delete(Key,Data)++[{Key,Value}],
-    EncodedNewData = iolist_to_binary(mochijson2:encode({struct,NewData})),
-    case eredis_cmd(["SETX", SessionId, 800, EncodedNewData]) of
-        {error, Error} ->
-            {reply, {error, Error}, State};
-        {ok,<<"OK">>} ->
-            {reply, ok, State}
+    case get_session_data(SessionId) of
+        {ok, Data} -> NewData = proplists:delete(Key,Data)++[{Key,Value}],
+                      EncodedNewData =
+                          iolist_to_binary(mochijson2:encode({struct,NewData})),
+                      case eredis_cmd(["SETEX", SessionId, 800, EncodedNewData]) of
+                          {error, Error} ->
+                              {reply, {error, Error}, State};
+                          {ok,<<"OK">>} ->
+                              {reply, ok, State}
+                      end;
+        {error, Error} -> {reply, {error, Error}, State}
     end;
 handle_call({delete_session, SessionId}, _From, State) ->
     case eredis_cmd(["DEL", SessionId]) of
-        {ok, Count} -> {reply, {ok, Count}, State};
+        {ok, <<"1">>} -> {reply, ok, State};
         {error, Error} -> {reply, {error, Error}, State}
     end;
 handle_call({remove_session_data, SessionId, Key}, _From, State) ->
     {ok, Data} = get_session_data(SessionId),
     NewData = proplists:delete(Key,Data),
     EncodedNewData = iolist_to_binary(mochijson2:encode({struct,NewData})),
-    case eredis_cmd(["SETX", SessionId, 800, EncodedNewData]) of
+    case eredis_cmd(["SETEX", SessionId, 800, EncodedNewData]) of
         {error, Error} ->
             {reply, {error, Error}, State};
         {ok,<<"OK">>} ->
             {reply, ok, State}
-    end.
+    end;
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -110,6 +111,13 @@ get_session_id() ->
 
 eredis_cmd(Args) ->
     poolboy:transaction( dick, fun(Worker) -> eredis:q(Worker, Args) end ).
+
+get_session_data(SessionId) ->
+    case eredis_cmd(["GET", SessionId]) of
+        {ok, Data} -> {struct,DecodeData} = mochijson2:decode(Data),
+                      {ok, DecodeData};
+        {error, Error} -> {error, Error}
+    end.
 
 %% ------------------------------------------------------------------
 %% Internal Function Tests
