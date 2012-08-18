@@ -32,7 +32,9 @@
          hash_password/2,
          epgsql_date_format_for_json/1,
          json_date_format_for_epgsql/1,
-         hexstring/1
+         hexstring/1,
+         to_json_binary/1,
+         to_proplist/1
         ]).
 
 %% @spec () -> integer()
@@ -56,7 +58,7 @@ epgsql_date_format_for_json({Year,Month,Day}) ->
 
 %% @spec (tuple()) -> tuple()
 %% @doc Simple function to format date for epgsql
-json_date_format_for_epgsql({struct,[{<<"year">>,Year},{<<"month">>,Month},{<<"day">>,Day}]}) ->
+json_date_format_for_epgsql([{<<"year">>,Year},{<<"month">>,Month},{<<"day">>,Day}]) ->
     {Year,Month,Day}.
 
 %% @spec (binary()) -> iolist()
@@ -69,6 +71,39 @@ hexstring(<<X:256/big-unsigned-integer>>) ->
     lists:flatten(io_lib:format("~64.16.0b", [X]));
 hexstring(<<X:512/big-unsigned-integer>>) ->
     lists:flatten(io_lib:format("~128.16.0b", [X])).
+
+%% @spec (iolist) -> iolist()
+%% @doc Converts proplists into structure acceptable for mochijson. Still needs work
+prop_to_struct([]) -> [];
+prop_to_struct([H|_]=List) when is_number(H) or is_bitstring(H)->
+    List;
+prop_to_struct([H|_]=List) when is_tuple(H)->
+    {struct,lists:map(fun(L)-> prop_to_struct(L) end, List)};
+prop_to_struct({T,V}) when is_list(V) ->
+    {T,prop_to_struct(V)};
+prop_to_struct({_,V} =T) when is_number(V) or is_bitstring(V)->
+    T.
+
+%% @spec (iolist) -> binary()
+%% @doc Helper function to convert proplist to json.
+to_json_binary(Data) when is_list(Data)->
+    iolist_to_binary(mochijson2:encode(prop_to_struct(Data))).
+
+%% @spec (tuple()) -> iolist()
+%% @doc Converts tuple json structure from mochijson to a proplist
+struct_to_prop({struct,L}) ->
+    struct_to_prop(L);
+struct_to_prop([H|_] = List) when is_tuple(H) ->
+    lists:map(fun(L)-> struct_to_prop(L) end, List);
+struct_to_prop({K,V}) when is_tuple(V)->
+    {K,struct_to_prop(V)};
+struct_to_prop(List) when is_list(List) or is_tuple(List)->
+    List.
+
+%% @spec (binary()|iolist()) -> iolist()
+%% @doc Helper function to convert json binary to proplist.
+to_proplist(JsonDoc) when is_list(JsonDoc) or is_binary(JsonDoc)->
+    struct_to_prop(mochijson2:decode(JsonDoc)).
 
 %%
 %% Tests for unexported functions
@@ -133,7 +168,7 @@ json_date_format_for_epgsql_test_() ->
     {"We get the correctly formatted pgsql date.",
      fun() ->
          Date = erldslabb_util:json_date_format_for_epgsql(
-                  {struct,[{<<"year">>,2012},{<<"month">>,8},{<<"day">>,12}]}
+                  [{<<"year">>,2012},{<<"month">>,8},{<<"day">>,12}]
                 ),
          ?assertEqual({2012,8,12},Date)
      end

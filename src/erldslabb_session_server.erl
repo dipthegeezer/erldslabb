@@ -61,9 +61,8 @@ handle_call({get_session_data, SessionId, Key}, _From, State) ->
 handle_call({set_session_data, SessionId, Key, Value}, _From, State) ->
     case get_session_data(SessionId) of
         {ok, Data} -> NewData = proplists:delete(Key,Data)++[{Key,Value}],
-                      EncodedNewData =
-                          iolist_to_binary(mochijson2:encode({struct,NewData})),
-                      case eredis_cmd(["SETEX", SessionId, 800, EncodedNewData]) of
+                      JsonDoc = erldslabb_util:to_json_binary(NewData),
+                      case eredis_cmd(["SETEX", SessionId, 800, JsonDoc]) of
                           {error, Error} ->
                               {reply, {error, Error}, State};
                           {ok,<<"OK">>} ->
@@ -79,12 +78,17 @@ handle_call({delete_session, SessionId}, _From, State) ->
 handle_call({remove_session_data, SessionId, Key}, _From, State) ->
     {ok, Data} = get_session_data(SessionId),
     NewData = proplists:delete(Key,Data),
-    EncodedNewData = iolist_to_binary(mochijson2:encode({struct,NewData})),
-    case eredis_cmd(["SETEX", SessionId, 800, EncodedNewData]) of
+    JsonDoc = erldslabb_util:to_json_binary(NewData),
+    case eredis_cmd(["SETEX", SessionId, 800, JsonDoc]) of
         {error, Error} ->
             {reply, {error, Error}, State};
         {ok,<<"OK">>} ->
             {reply, ok, State}
+    end;
+handle_call({has_expired, SessionId}, _From, State) ->
+    case eredis_cmd(["EXISTS", SessionId]) of
+        {ok, <<"1">>} -> {reply, false, State};
+        {ok, <<"0">>} -> {reply, true, State}
     end;
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
@@ -114,8 +118,8 @@ eredis_cmd(Args) ->
 
 get_session_data(SessionId) ->
     case eredis_cmd(["GET", SessionId]) of
-        {ok, Data} -> {struct,DecodeData} = mochijson2:decode(Data),
-                      {ok, DecodeData};
+        {ok, JsonDoc} -> Prop = erldslabb_util:to_proplist(JsonDoc),
+                         {ok, Prop};
         {error, Error} -> {error, Error}
     end.
 

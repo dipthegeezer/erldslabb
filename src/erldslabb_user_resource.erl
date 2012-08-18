@@ -53,7 +53,7 @@ allow_missing_post(ReqData, Context) ->
 
 process_post(ReqData, Context) ->
     [{JsonDoc, _}] = mochiweb_util:parse_qs(wrq:req_body(ReqData)),
-    {struct, Doc} = mochijson2:decode(JsonDoc),
+    Doc = erldslabb_util:to_proplist(JsonDoc),
     FDate = erldslabb_util:json_date_format_for_epgsql(
       proplists:get_value(<<"date_of_birth">>, Doc)
     ),
@@ -92,20 +92,15 @@ to_json(ReqData, Context=#ctx{user=User}) ->
     FDate = erldslabb_util:epgsql_date_format_for_json(
       proplists:get_value(<<"date_of_birth">>, User)
     ),
-    Resp = iolist_to_binary(
-             mochijson2:encode(
-               {struct,
-                proplists:delete(<<"date_of_birth">>, User)
-                ++[{<<"date_of_birth">>,FDate}]
-               }
-              )
-            ),
+    Resp = erldslabb_util:to_json_binary(
+      proplists:delete(<<"date_of_birth">>, User)
+      ++[{<<"date_of_birth">>,FDate}]),
     {Resp, ReqData, Context}.
 
 from_json(ReqData, Context) ->
     Id = list_to_integer(wrq:path_info(id, ReqData)),
     [{JsonDoc, _}] = mochiweb_util:parse_qs(wrq:req_body(ReqData)),
-    {struct, Doc} = mochijson2:decode(JsonDoc),
+    Doc = erldslabb_util:to_proplist(JsonDoc),
     % format date
     FDate = erldslabb_util:json_date_format_for_epgsql(
       proplists:get_value(<<"date_of_birth">>, Doc)
