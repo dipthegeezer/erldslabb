@@ -7,3 +7,4 @@ priv/log
 ebin/
 erl_crash.dump
 .~/
+logs/

@@ -1,4 +1,4 @@
--module(erldslabb_session_server_test).
+-module(erldslabb_session_server_tests).
 -include_lib("eunit/include/eunit.hrl").
 
 setup() ->

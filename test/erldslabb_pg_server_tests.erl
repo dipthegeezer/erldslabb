@@ -1,4 +1,4 @@
--module(erldslabb_pg_server_test).
+-module(erldslabb_pg_server_tests).
 -include_lib("eunit/include/eunit.hrl").
 
 setup() ->
